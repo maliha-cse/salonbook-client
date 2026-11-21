@@ -58,6 +58,49 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#faf6f2] text-[#34251f]">
+
+      {/* Navbar */}
+      <nav className="sticky top-0 z-50 border-b border-[#eee4dd] bg-white/95 shadow-sm backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4 sm:px-10 lg:px-12">
+          <Link
+            href="/"
+            className="text-2xl font-bold tracking-wide text-[#9b6248]"
+          >
+            SalonBook
+          </Link>
+
+          <div className="flex flex-wrap items-center gap-5 sm:gap-7">
+            <Link
+              href="/"
+              className="text-sm font-medium text-[#34251f] transition hover:text-[#9b6248]"
+            >
+              Home
+            </Link>
+
+            <Link
+              href="/services"
+              className="text-sm font-medium text-[#34251f] transition hover:text-[#9b6248]"
+            >
+              Services
+            </Link>
+
+            <Link
+              href="/sign-in"
+              className="text-sm font-medium text-[#34251f] transition hover:text-[#9b6248]"
+            >
+              Sign In
+            </Link>
+
+            <Link
+              href="/sign-up"
+              className="rounded-lg bg-[#9b6248] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#80503b]"
+            >
+              Sign Up
+            </Link>
+          </div>
+        </div>
+      </nav>
+
       {/* Hero Section */}
       <section className="relative flex min-h-[650px] items-center overflow-hidden bg-[#4b3027]">
         <div
