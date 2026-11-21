@@ -48,6 +48,7 @@ export default function SignInPage() {
 
       const user = data.user as typeof data.user & ExtendedUser;
 
+      // Check whether the account is blocked
       if (user.isBlocked) {
         await authClient.signOut();
         setError(
@@ -56,12 +57,39 @@ export default function SignInPage() {
         return;
       }
 
+      // Generate JWT after successful sign in
+      const tokenResponse = await fetch(
+        "http://localhost:5000/api/token",
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+
+      const tokenData = await tokenResponse.json();
+
+      if (
+        !tokenResponse.ok ||
+        !tokenData.success ||
+        !tokenData.token
+      ) {
+        await authClient.signOut();
+        sessionStorage.removeItem("salonbook_token");
+        setError("Authentication failed. Please sign in again.");
+        return;
+      }
+
+      // Store JWT for protected API requests
+      sessionStorage.setItem("salonbook_token", tokenData.token);
+
+      // Redirect according to user role
       if (user.role === "admin") {
         router.push("/dashboard/admin");
       } else {
         router.push("/dashboard/customer");
       }
-    } catch {
+    } catch (error) {
+      console.error("Sign in error:", error);
       setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
