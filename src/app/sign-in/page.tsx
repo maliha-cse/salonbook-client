@@ -103,7 +103,7 @@ export default function SignInPage() {
     try {
       const { error } = await authClient.signIn.social({
         provider: "google",
-        callbackURL: "/dashboard",
+        callbackURL: "http://localhost:3000/auth/callback",
       });
 
       if (error) {

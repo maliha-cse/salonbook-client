@@ -2,8 +2,24 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
 
 export default function CustomerDashboard() {
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    try {
+      await authClient.signOut();
+    } catch (error) {
+      console.error("Sign out failed:", error);
+    } finally {
+      sessionStorage.removeItem("salonbook_token");
+      router.replace("/sign-in");
+      router.refresh();
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[#faf6f2] text-[#34251f]">
       {/* Header */}
@@ -16,12 +32,21 @@ export default function CustomerDashboard() {
             SalonBook
           </Link>
 
-          <Link
-            href="/"
-            className="text-sm font-medium text-[#806d63] hover:text-[#9b6248]"
-          >
-            Back to Home
-          </Link>
+          <div className="flex items-center gap-5">
+            <Link
+              href="/"
+              className="text-sm font-medium text-[#806d63] hover:text-[#9b6248]"
+            >
+              Back to Home
+            </Link>
+
+            <button
+              onClick={handleSignOut}
+              className="rounded-xl bg-[#9b6248] px-5 py-2 text-sm font-semibold text-white hover:bg-[#80503b]"
+            >
+              Sign Out
+            </button>
+          </div>
         </div>
       </header>
 

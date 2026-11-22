@@ -3,6 +3,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
 
 type Service = {
   _id: string;
@@ -28,9 +30,25 @@ const categories = [
 ];
 
 export default function Home() {
+  const router = useRouter();
+
+  const { data: session, isPending } = authClient.useSession();
+
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const handleSignOut = async () => {
+    try {
+      await authClient.signOut();
+    } catch (error) {
+      console.error("Sign out failed:", error);
+    } finally {
+      sessionStorage.removeItem("salonbook_token");
+      router.replace("/");
+      router.refresh();
+    }
+  };
 
   useEffect(() => {
     const fetchServices = async () => {
@@ -42,7 +60,6 @@ export default function Home() {
         }
 
         const data = await response.json();
-
         setServices(data.services || []);
       } catch {
         setError(
@@ -84,19 +101,45 @@ export default function Home() {
               Services
             </Link>
 
-            <Link
-              href="/sign-in"
-              className="text-sm font-medium text-[#34251f] transition hover:text-[#9b6248]"
-            >
-              Sign In
-            </Link>
+            {!isPending && (
+              session?.user ? (
+                <>
+                  <Link
+                    href={
+                      session.user.role === "admin"
+                        ? "/dashboard/admin"
+                        : "/dashboard/customer"
+                    }
+                    className="text-sm font-medium text-[#34251f] transition hover:text-[#9b6248]"
+                  >
+                    Dashboard
+                  </Link>
 
-            <Link
-              href="/sign-up"
-              className="rounded-lg bg-[#9b6248] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#80503b]"
-            >
-              Sign Up
-            </Link>
+                  <button
+                    onClick={handleSignOut}
+                    className="rounded-lg bg-[#9b6248] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#80503b]"
+                  >
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href="/sign-in"
+                    className="text-sm font-medium text-[#34251f] transition hover:text-[#9b6248]"
+                  >
+                    Sign In
+                  </Link>
+
+                  <Link
+                    href="/sign-up"
+                    className="rounded-lg bg-[#9b6248] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#80503b]"
+                  >
+                    Sign Up
+                  </Link>
+                </>
+              )
+            )}
           </div>
         </div>
       </nav>
