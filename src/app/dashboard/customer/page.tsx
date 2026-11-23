@@ -23,17 +23,51 @@ type Appointment = {
   };
 };
 
+type ProfileUpdateData = {
+  name: string;
+  image: string;
+  phone: string;
+};
+
 export default function CustomerDashboard() {
   const router = useRouter();
 
   const { data: session, isPending: sessionLoading } =
     authClient.useSession();
 
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profileImage, setProfileImage] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState("");
+  const [profileError, setProfileError] = useState("");
+
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionId, setActionId] = useState("");
 
+  const user = session?.user as
+    | {
+        name?: string;
+        email?: string;
+        image?: string | null;
+        phone?: string;
+        emailVerified?: boolean;
+      }
+    | undefined;
+
+  // Load existing profile information
+  useEffect(() => {
+    if (user) {
+      setProfileName(user.name || "");
+      setProfileImage(user.image || "");
+      setProfilePhone(user.phone || "");
+    }
+  }, [user?.name, user?.image, user?.phone]);
+
+  // Fetch customer appointments
   const fetchAppointments = async () => {
     try {
       setLoading(true);
@@ -73,9 +107,75 @@ export default function CustomerDashboard() {
   };
 
   useEffect(() => {
-    fetchAppointments();
-  }, []);
+    if (!sessionLoading && user) {
+      fetchAppointments();
+    }
+  }, [sessionLoading, user?.email]);
 
+  // Update customer profile
+  const handleUpdateProfile = async (
+    event: React.FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+
+    setProfileMessage("");
+    setProfileError("");
+
+    const trimmedName = profileName.trim();
+    const trimmedImage = profileImage.trim();
+    const trimmedPhone = profilePhone.trim();
+
+    if (!trimmedName) {
+      setProfileError("Please enter your full name.");
+      return;
+    }
+
+    if (trimmedImage) {
+      try {
+        new URL(trimmedImage);
+      } catch {
+        setProfileError("Please enter a valid profile image URL.");
+        return;
+      }
+    }
+
+    try {
+      setProfileSaving(true);
+
+      // Better Auth custom field: phone
+      const updateUser = authClient.updateUser as unknown as (
+        data: ProfileUpdateData
+      ) => Promise<{
+        data?: unknown;
+        error?: { message?: string } | null;
+      }>;
+
+      const result = await updateUser({
+        name: trimmedName,
+        image: trimmedImage,
+        phone: trimmedPhone,
+      });
+
+      if (result.error) {
+        throw new Error(
+          result.error.message || "Failed to update profile."
+        );
+      }
+
+      setProfileMessage("Your profile has been updated successfully!");
+      setIsEditingProfile(false);
+    } catch (err) {
+      setProfileError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong while updating your profile."
+      );
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  // Cancel appointment
   const handleCancelAppointment = async (id: string) => {
     const confirmed = window.confirm(
       "Are you sure you want to cancel this appointment?"
@@ -110,18 +210,17 @@ export default function CustomerDashboard() {
       }
 
       await fetchAppointments();
-      alert("Appointment cancelled successfully.");
+      window.alert("Appointment cancelled successfully.");
     } catch (err) {
-      alert(
-        err instanceof Error
-          ? err.message
-          : "Something went wrong."
+      window.alert(
+        err instanceof Error ? err.message : "Something went wrong."
       );
     } finally {
       setActionId("");
     }
   };
 
+  // Sign out
   const handleSignOut = async () => {
     try {
       await authClient.signOut();
@@ -158,8 +257,6 @@ export default function CustomerDashboard() {
         return "bg-yellow-100 text-yellow-700";
     }
   };
-
-  const user = session?.user;
 
   return (
     <main className="min-h-screen bg-[#faf6f2] text-[#34251f]">
@@ -238,7 +335,7 @@ export default function CustomerDashboard() {
             <div className="text-4xl">👤</div>
             <h2 className="mt-5 text-xl font-bold">My Profile</h2>
             <p className="mt-3 text-sm leading-6 text-[#806d63]">
-              View your personal account information.
+              View and update your personal account information.
             </p>
             <span className="mt-4 inline-block text-sm font-semibold text-[#9b6248]">
               View Profile →
@@ -253,9 +350,7 @@ export default function CustomerDashboard() {
               <p className="font-semibold tracking-widest text-[#a97051]">
                 YOUR BOOKINGS
               </p>
-              <h2 className="mt-2 text-2xl font-bold">
-                My Appointments
-              </h2>
+              <h2 className="mt-2 text-2xl font-bold">My Appointments</h2>
             </div>
 
             <button
@@ -284,9 +379,7 @@ export default function CustomerDashboard() {
           ) : appointments.length === 0 ? (
             <div className="rounded-2xl border border-[#eee4dd] bg-white p-10 text-center">
               <div className="text-5xl">📅</div>
-              <h3 className="mt-4 text-xl font-bold">
-                No Appointments Yet
-              </h3>
+              <h3 className="mt-4 text-xl font-bold">No Appointments Yet</h3>
               <p className="mt-2 text-sm text-[#806d63]">
                 You have not booked any salon appointments yet.
               </p>
@@ -399,7 +492,7 @@ export default function CustomerDashboard() {
             </p>
             <h2 className="mt-2 text-2xl font-bold">My Profile</h2>
             <p className="mt-2 text-[#806d63]">
-              View your personal account information.
+              View and update your personal account information.
             </p>
           </div>
 
@@ -410,6 +503,7 @@ export default function CustomerDashboard() {
               </p>
             ) : user ? (
               <>
+                {/* Profile Header */}
                 <div className="flex flex-col items-center gap-4 border-b border-[#eee4dd] pb-7 sm:flex-row">
                   {user.image ? (
                     <img
@@ -433,41 +527,177 @@ export default function CustomerDashboard() {
                   </div>
                 </div>
 
-                <div className="mt-7 grid gap-6 sm:grid-cols-2">
-                  <div>
-                    <p className="text-sm font-medium text-[#a18d82]">
-                      Full Name
-                    </p>
-                    <p className="mt-2 font-semibold">
-                      {user.name || "Not available"}
-                    </p>
+                {/* Success and Error Messages */}
+                {profileMessage && (
+                  <div className="mt-5 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+                    {profileMessage}
                   </div>
+                )}
 
-                  <div>
-                    <p className="text-sm font-medium text-[#a18d82]">
-                      Email Address
-                    </p>
-                    <p className="mt-2 break-all font-semibold">
-                      {user.email || "Not available"}
-                    </p>
+                {profileError && (
+                  <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">
+                    {profileError}
                   </div>
+                )}
 
-                  <div>
-                    <p className="text-sm font-medium text-[#a18d82]">
-                      Email Verification
-                    </p>
-                    <p className="mt-2 font-semibold">
-                      {user.emailVerified ? "Verified" : "Not verified"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm font-medium text-[#a18d82]">
-                      Account Type
-                    </p>
-                    <p className="mt-2 font-semibold">Customer</p>
-                  </div>
+                {/* Edit Profile Button */}
+                <div className="mt-6">
+                  <button
+                    onClick={() => {
+                      setProfileName(user.name || "");
+                      setProfileImage(user.image || "");
+                      setProfilePhone(user.phone || "");
+                      setProfileMessage("");
+                      setProfileError("");
+                      setIsEditingProfile(!isEditingProfile);
+                    }}
+                    className="rounded-xl bg-[#9b6248] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#80503b]"
+                  >
+                    {isEditingProfile ? "Cancel Editing" : "Edit Profile"}
+                  </button>
                 </div>
+
+                {isEditingProfile ? (
+                  /* Edit Profile Form */
+                  <form
+                    onSubmit={handleUpdateProfile}
+                    className="mt-7 space-y-5 border-t border-[#eee4dd] pt-7"
+                  >
+                    <h3 className="text-xl font-bold">Update Your Profile</h3>
+
+                    <div>
+                      <label
+                        htmlFor="profileName"
+                        className="mb-2 block text-sm font-semibold"
+                      >
+                        Full Name
+                      </label>
+                      <input
+                        id="profileName"
+                        type="text"
+                        value={profileName}
+                        onChange={(event) =>
+                          setProfileName(event.target.value)
+                        }
+                        required
+                        className="w-full rounded-xl border border-[#e5d8cf] px-4 py-3 outline-none focus:border-[#9b6248]"
+                        placeholder="Enter your full name"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="profileImage"
+                        className="mb-2 block text-sm font-semibold"
+                      >
+                        Profile Image URL
+                      </label>
+                      <input
+                        id="profileImage"
+                        type="url"
+                        value={profileImage}
+                        onChange={(event) =>
+                          setProfileImage(event.target.value)
+                        }
+                        className="w-full rounded-xl border border-[#e5d8cf] px-4 py-3 outline-none focus:border-[#9b6248]"
+                        placeholder="https://example.com/profile.jpg"
+                      />
+                      <p className="mt-2 text-xs text-[#a18d82]">
+                        Paste a publicly accessible image URL.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="profilePhone"
+                        className="mb-2 block text-sm font-semibold"
+                      >
+                        Phone Number
+                      </label>
+                      <input
+                        id="profilePhone"
+                        type="tel"
+                        value={profilePhone}
+                        onChange={(event) =>
+                          setProfilePhone(event.target.value)
+                        }
+                        className="w-full rounded-xl border border-[#e5d8cf] px-4 py-3 outline-none focus:border-[#9b6248]"
+                        placeholder="Enter your phone number"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-3 pt-2">
+                      <button
+                        type="submit"
+                        disabled={profileSaving}
+                        className="rounded-xl bg-[#9b6248] px-6 py-3 text-sm font-semibold text-white hover:bg-[#80503b] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {profileSaving ? "Saving..." : "Save Profile"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingProfile(false);
+                          setProfileName(user.name || "");
+                          setProfileImage(user.image || "");
+                          setProfilePhone(user.phone || "");
+                          setProfileError("");
+                        }}
+                        disabled={profileSaving}
+                        className="rounded-xl border border-[#d9c8bd] px-6 py-3 text-sm font-semibold text-[#806d63] hover:bg-[#faf6f2]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  /* Profile Information */
+                  <div className="mt-7 grid gap-6 sm:grid-cols-2">
+                    <div>
+                      <p className="text-sm font-medium text-[#a18d82]">
+                        Full Name
+                      </p>
+                      <p className="mt-2 font-semibold">
+                        {user.name || "Not available"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-medium text-[#a18d82]">
+                        Email Address
+                      </p>
+                      <p className="mt-2 break-all font-semibold">
+                        {user.email || "Not available"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-medium text-[#a18d82]">
+                        Phone Number
+                      </p>
+                      <p className="mt-2 font-semibold">
+                        {user.phone || "Not added"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-medium text-[#a18d82]">
+                        Email Verification
+                      </p>
+                      <p className="mt-2 font-semibold">
+                        {user.emailVerified ? "Verified" : "Not verified"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-medium text-[#a18d82]">
+                        Account Type
+                      </p>
+                      <p className="mt-2 font-semibold">Customer</p>
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
               <div className="py-6 text-center">
