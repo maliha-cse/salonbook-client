@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
+import { authClient } from "@/lib/auth-client";
 
 type Service = {
   _id: string;
@@ -43,6 +44,12 @@ type Appointment = {
   };
 };
 
+type ProfileUpdateData = {
+  name: string;
+  image: string;
+  phone: string;
+};
+
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -56,6 +63,25 @@ const emptyForm: ServiceForm = {
 };
 
 export default function AdminDashboard() {
+  const { data: session } = authClient.useSession();
+
+  const user = session?.user as
+    | {
+        name?: string;
+        email?: string;
+        image?: string | null;
+        phone?: string;
+      }
+    | undefined;
+
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profileImage, setProfileImage] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState("");
+  const [profileError, setProfileError] = useState("");
+
   const [services, setServices] = useState<Service[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
 
@@ -74,6 +100,69 @@ export default function AdminDashboard() {
   const [message, setMessage] = useState("");
 
   const getToken = () => sessionStorage.getItem("salonbook_token");
+
+  useEffect(() => {
+    if (user) {
+      setProfileName(user.name || "");
+      setProfileImage(user.image || "");
+      setProfilePhone(user.phone || "");
+    }
+  }, [user?.name, user?.image, user?.phone]);
+
+  // Update Admin Profile
+  const handleUpdateProfile = async (
+    e: FormEvent<HTMLFormElement>
+  ) => {
+    e.preventDefault();
+
+    setProfileError("");
+    setProfileMessage("");
+
+    if (!profileName.trim()) {
+      setProfileError("Please enter your full name.");
+      return;
+    }
+
+    if (profileImage.trim()) {
+      try {
+        new URL(profileImage);
+      } catch {
+        setProfileError("Please enter a valid image URL.");
+        return;
+      }
+    }
+
+    try {
+      setProfileSaving(true);
+
+      const updateUser = authClient.updateUser as unknown as (
+        data: ProfileUpdateData
+      ) => Promise<{
+        error?: { message?: string } | null;
+      }>;
+
+      const result = await updateUser({
+        name: profileName.trim(),
+        image: profileImage.trim(),
+        phone: profilePhone.trim(),
+      });
+
+      if (result.error) {
+        throw new Error(
+          result.error.message || "Failed to update profile."
+        );
+      }
+
+      setProfileMessage("Profile updated successfully!");
+      setIsEditingProfile(false);
+    } catch (err) {
+      setProfileError(
+        err instanceof Error ? err.message : "Something went wrong."
+      );
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
   // Fetch all services
   const fetchServices = useCallback(async () => {
@@ -409,6 +498,143 @@ export default function AdminDashboard() {
         <p className="mt-3 text-[#806d63]">
           Manage salon services and customer appointments.
         </p>
+
+        {/* Admin Profile */}
+        <section className="mt-8 rounded-2xl border border-[#eee4dd] bg-white p-6 shadow-sm sm:p-8">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold">My Profile</h2>
+              <p className="mt-2 text-sm text-[#806d63]">
+                Manage your admin account information.
+              </p>
+            </div>
+
+            {!isEditingProfile && (
+              <button
+                onClick={() => {
+                  setProfileError("");
+                  setProfileMessage("");
+                  setIsEditingProfile(true);
+                }}
+                className="rounded-lg bg-[#9b6248] px-5 py-2 font-semibold text-white hover:bg-[#80503b]"
+              >
+                Edit Profile
+              </button>
+            )}
+          </div>
+
+          {profileMessage && (
+            <p className="mt-5 rounded-lg bg-green-50 p-3 text-sm text-green-700">
+              {profileMessage}
+            </p>
+          )}
+
+          {profileError && (
+            <p className="mt-5 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+              {profileError}
+            </p>
+          )}
+
+          {!isEditingProfile ? (
+            <div className="mt-6 flex flex-col gap-5 sm:flex-row sm:items-center">
+              {user?.image ? (
+                <img
+                  src={user.image}
+                  alt="Admin profile"
+                  className="h-24 w-24 rounded-full object-cover"
+                />
+              ) : (
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#f5e9e3] text-3xl font-bold text-[#9b6248]">
+                  {user?.name?.charAt(0)?.toUpperCase() || "A"}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <p className="text-xl font-bold">
+                  {user?.name || "Admin"}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {user?.email || "Email unavailable"}
+                </p>
+                <p className="text-sm text-gray-500">
+                  Phone: {user?.phone || "Not added"}
+                </p>
+                <span className="inline-block rounded-full bg-[#f5e9e3] px-3 py-1 text-xs font-semibold text-[#9b6248]">
+                  Administrator
+                </span>
+              </div>
+            </div>
+          ) : (
+            <form
+              onSubmit={handleUpdateProfile}
+              className="mt-6 grid gap-5 sm:grid-cols-2"
+            >
+              <div>
+                <label className="mb-2 block text-sm font-semibold">
+                  Full Name
+                </label>
+                <input
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  required
+                  className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-[#9b6248]"
+                  placeholder="Your full name"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  value={profilePhone}
+                  onChange={(e) => setProfilePhone(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-[#9b6248]"
+                  placeholder="Your phone number"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="mb-2 block text-sm font-semibold">
+                  Profile Image URL
+                </label>
+                <input
+                  type="url"
+                  value={profileImage}
+                  onChange={(e) => setProfileImage(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-[#9b6248]"
+                  placeholder="https://example.com/profile.jpg"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-3 sm:col-span-2">
+                <button
+                  type="submit"
+                  disabled={profileSaving}
+                  className="rounded-lg bg-[#9b6248] px-7 py-3 font-semibold text-white hover:bg-[#80503b] disabled:opacity-60"
+                >
+                  {profileSaving ? "Saving..." : "Save Profile"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditingProfile(false);
+                    setProfileError("");
+                    setProfileMessage("");
+                    setProfileName(user?.name || "");
+                    setProfileImage(user?.image || "");
+                    setProfilePhone(user?.phone || "");
+                  }}
+                  className="rounded-lg border border-gray-300 px-7 py-3 font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
 
         {error && (
           <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
