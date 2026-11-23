@@ -106,7 +106,7 @@ export default function Home() {
                 <>
                   <Link
                     href={
-                      session.user.role === "admin"
+                      (session.user as typeof session.user & { role?: string }).role === "admin"
                         ? "/dashboard/admin"
                         : "/dashboard/customer"
                     }

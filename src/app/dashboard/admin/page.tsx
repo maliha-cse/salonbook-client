@@ -24,6 +24,25 @@ type ServiceForm = {
   image: string;
 };
 
+type Appointment = {
+  _id: string;
+  appointmentDate: string;
+  timeSlot: string;
+  message?: string;
+  servicePrice: number;
+  paymentStatus: string;
+  status: "pending" | "confirmed" | "cancelled" | "completed";
+  createdAt?: string;
+  service?: {
+    serviceName?: string;
+    category?: string;
+  };
+  customer?: {
+    name?: string;
+    email?: string;
+  };
+};
+
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -38,15 +57,25 @@ const emptyForm: ServiceForm = {
 
 export default function AdminDashboard() {
   const [services, setServices] = useState<Service[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+
   const [form, setForm] = useState<ServiceForm>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [appointmentActionId, setAppointmentActionId] = useState<string | null>(
+    null
+  );
+
   const [error, setError] = useState("");
+  const [appointmentsError, setAppointmentsError] = useState("");
   const [message, setMessage] = useState("");
 
   const getToken = () => sessionStorage.getItem("salonbook_token");
 
+  // Fetch all services
   const fetchServices = useCallback(async () => {
     try {
       setLoading(true);
@@ -69,21 +98,64 @@ export default function AdminDashboard() {
     }
   }, []);
 
+  // Fetch all appointments for admin
+  const fetchAppointments = useCallback(async () => {
+    try {
+      setAppointmentsLoading(true);
+      setAppointmentsError("");
+
+      const token = getToken();
+
+      if (!token) {
+        throw new Error("Please sign in again. Authentication token not found.");
+      }
+
+      const response = await fetch(
+        `${API_URL}/api/admin/appointments`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Failed to load appointments.");
+      }
+
+      setAppointments(data.appointments || []);
+    } catch (err) {
+      setAppointmentsError(
+        err instanceof Error ? err.message : "Something went wrong."
+      );
+    } finally {
+      setAppointmentsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchServices();
-  }, [fetchServices]);
+    fetchAppointments();
+  }, [fetchServices, fetchAppointments]);
 
+  // Form input change
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
+  // Reset service form
   const resetForm = () => {
     setForm(emptyForm);
     setEditingId(null);
   };
 
+  // Add / Update Service
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
@@ -111,6 +183,7 @@ export default function AdminDashboard() {
 
       const response = await fetch(url, {
         method: editingId ? "PATCH" : "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
@@ -141,8 +214,10 @@ export default function AdminDashboard() {
     }
   };
 
+  // Edit Service
   const handleEdit = (service: Service) => {
     setEditingId(service._id);
+
     setForm({
       serviceName: service.serviceName,
       category: service.category,
@@ -158,6 +233,7 @@ export default function AdminDashboard() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  // Delete Service
   const handleDelete = async (id: string) => {
     const confirmed = window.confirm(
       "Are you sure you want to delete this service?"
@@ -180,6 +256,7 @@ export default function AdminDashboard() {
         `${API_URL}/api/admin/services/${id}`,
         {
           method: "DELETE",
+          credentials: "include",
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -201,6 +278,7 @@ export default function AdminDashboard() {
     }
   };
 
+  // Activate / Deactivate Service
   const handleStatusChange = async (
     service: Service,
     status: "active" | "inactive"
@@ -220,6 +298,7 @@ export default function AdminDashboard() {
         `${API_URL}/api/admin/services/${service._id}`,
         {
           method: "PATCH",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
@@ -240,6 +319,64 @@ export default function AdminDashboard() {
       setError(
         err instanceof Error ? err.message : "Something went wrong."
       );
+    }
+  };
+
+  // Confirm / Cancel Appointment
+  const handleAppointmentAction = async (
+    id: string,
+    action: "confirm" | "cancel"
+  ) => {
+    if (action === "cancel") {
+      const confirmed = window.confirm(
+        "Are you sure you want to cancel this appointment?"
+      );
+
+      if (!confirmed) return;
+    }
+
+    const token = getToken();
+
+    if (!token) {
+      setAppointmentsError("Please sign in again.");
+      return;
+    }
+
+    try {
+      setAppointmentsError("");
+      setMessage("");
+      setAppointmentActionId(id);
+
+      const response = await fetch(
+        `${API_URL}/api/admin/appointments/${id}/${action}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Failed to update appointment.");
+      }
+
+      setMessage(
+        action === "confirm"
+          ? "Appointment confirmed successfully!"
+          : "Appointment cancelled successfully!"
+      );
+
+      await fetchAppointments();
+    } catch (err) {
+      setAppointmentsError(
+        err instanceof Error ? err.message : "Something went wrong."
+      );
+    } finally {
+      setAppointmentActionId(null);
     }
   };
 
@@ -266,11 +403,11 @@ export default function AdminDashboard() {
         </p>
 
         <h1 className="mt-3 text-3xl font-bold sm:text-4xl">
-          Manage Salon Services
+          Admin Dashboard
         </h1>
 
         <p className="mt-3 text-[#806d63]">
-          Add, edit, delete and manage your salon services.
+          Manage salon services and customer appointments.
         </p>
 
         {error && (
@@ -285,6 +422,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* Add / Edit Service */}
         <section className="mt-10 rounded-2xl border border-[#eee4dd] bg-white p-6 shadow-sm sm:p-8">
           <h2 className="mb-6 text-2xl font-bold">
             {editingId ? "Edit Service" : "Add New Service"}
@@ -407,6 +545,7 @@ export default function AdminDashboard() {
           </form>
         </section>
 
+        {/* All Services */}
         <section className="mt-12">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
             <h2 className="text-2xl font-bold">All Services</h2>
@@ -509,6 +648,186 @@ export default function AdminDashboard() {
                         ? "Activate Service"
                         : "Deactivate Service"}
                     </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* All Appointments */}
+        <section className="mt-16">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="font-semibold tracking-widest text-[#a97051]">
+                BOOKING MANAGEMENT
+              </p>
+
+              <h2 className="mt-2 text-2xl font-bold">
+                All Appointments
+              </h2>
+
+              <p className="mt-2 text-sm text-[#806d63]">
+                View and manage customer appointment requests.
+              </p>
+            </div>
+
+            <button
+              onClick={fetchAppointments}
+              disabled={appointmentsLoading}
+              className="rounded-lg border border-[#9b6248] px-5 py-2 text-sm font-semibold text-[#9b6248] hover:bg-[#9b6248] hover:text-white disabled:opacity-50"
+            >
+              {appointmentsLoading ? "Refreshing..." : "Refresh Appointments"}
+            </button>
+          </div>
+
+          {appointmentsError && (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              {appointmentsError}
+            </div>
+          )}
+
+          {appointmentsLoading ? (
+            <div className="rounded-xl bg-white p-10 text-center text-gray-500">
+              Loading appointments...
+            </div>
+          ) : appointments.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[#e7cfc5] bg-white p-12 text-center">
+              <p className="text-lg font-semibold text-[#34251f]">
+                No Appointments Yet
+              </p>
+              <p className="mt-2 text-sm text-gray-500">
+                Customer bookings will appear here.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-2">
+              {appointments.map((appointment) => (
+                <article
+                  key={appointment._id}
+                  className="rounded-2xl border border-[#eee4dd] bg-white p-6 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold tracking-widest text-[#a97051]">
+                        APPOINTMENT
+                      </p>
+
+                      <h3 className="mt-2 text-xl font-bold">
+                        {appointment.service?.serviceName ||
+                          "Service unavailable"}
+                      </h3>
+
+                      <p className="mt-1 text-sm text-gray-500">
+                        {appointment.service?.category || "Salon Service"}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${
+                        appointment.status === "confirmed"
+                          ? "bg-green-100 text-green-700"
+                          : appointment.status === "cancelled"
+                            ? "bg-red-100 text-red-700"
+                            : appointment.status === "completed"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-yellow-100 text-yellow-700"
+                      }`}
+                    >
+                      {appointment.status}
+                    </span>
+                  </div>
+
+                  <div className="mt-6 grid gap-4 border-t border-[#eee4dd] pt-5 sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-gray-400">
+                        Customer
+                      </p>
+                      <p className="mt-1 font-semibold">
+                        {appointment.customer?.name || "Customer"}
+                      </p>
+                      <p className="mt-1 break-all text-sm text-gray-500">
+                        {appointment.customer?.email || "Email unavailable"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-gray-400">
+                        Appointment Date
+                      </p>
+                      <p className="mt-1 font-semibold">
+                        {appointment.appointmentDate}
+                      </p>
+                      <p className="mt-1 text-sm text-gray-500">
+                        {appointment.timeSlot}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-gray-400">
+                        Service Price
+                      </p>
+                      <p className="mt-1 text-lg font-bold text-[#9b6248]">
+                        ৳{appointment.servicePrice}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-gray-400">
+                        Payment Status
+                      </p>
+                      <p className="mt-1 font-semibold capitalize">
+                        {appointment.paymentStatus}
+                      </p>
+                    </div>
+                  </div>
+
+                  {appointment.message && (
+                    <div className="mt-5 rounded-xl bg-[#faf6f2] p-4">
+                      <p className="text-xs font-semibold uppercase text-gray-400">
+                        Customer Message
+                      </p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">
+                        {appointment.message}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mt-6 flex flex-wrap gap-3 border-t border-[#eee4dd] pt-5">
+                    {appointment.status === "pending" && (
+                      <button
+                        onClick={() =>
+                          handleAppointmentAction(
+                            appointment._id,
+                            "confirm"
+                          )
+                        }
+                        disabled={appointmentActionId === appointment._id}
+                        className="flex-1 rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+                      >
+                        {appointmentActionId === appointment._id
+                          ? "Updating..."
+                          : "Confirm Appointment"}
+                      </button>
+                    )}
+
+                    {(appointment.status === "pending" ||
+                      appointment.status === "confirmed") && (
+                      <button
+                        onClick={() =>
+                          handleAppointmentAction(
+                            appointment._id,
+                            "cancel"
+                          )
+                        }
+                        disabled={appointmentActionId === appointment._id}
+                        className="flex-1 rounded-lg border border-red-300 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {appointmentActionId === appointment._id
+                          ? "Updating..."
+                          : "Cancel Appointment"}
+                      </button>
+                    )}
                   </div>
                 </article>
               ))}
